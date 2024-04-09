@@ -1,4 +1,4 @@
-import YPImagePicker
+import BeehomeYPImagePicker
 
 @objc(AdvancedImagePicker) class AdvancedImagePicker : CDVPlugin  {
 
