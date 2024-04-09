@@ -42,7 +42,7 @@
                 <source url="https://cdn.cocoapods.org/"/>
             </config>
             <pods use-frameworks="true">
-                <pod name="YPImagePicker" spec="5.2.2"/>
+                <pod name="BeehomeYPImagePicker" spec="5.2.3"/>
             </pods>
         </podspec>
 
