@@ -114,43 +114,56 @@ import AVFoundation
         self.viewController.present(picker, animated: true, completion: nil);
     }
 
-      func handleResult(items: [YPMediaItem], asBase64: Bool, asJpeg: Bool) {
-        var array = [] as Array;
+    func handleResult(items: [YPMediaItem], asBase64: Bool, asJpeg: Bool) {
+        var array = [] as Array
+        var pendingVideoProcessing = 0
+        
         for item in items {
             switch item {
             case .photo(let photo):
-                let encodedImage = self.encodeImage(image: photo.image, asBase64: asBase64, asJpeg: asJpeg);
+                let encodedImage = self.encodeImage(image: photo.image, asBase64: asBase64, asJpeg: asJpeg)
                 array.append([
                     "type": "image",
                     "isBase64": asBase64,
                     "src": encodedImage
-                ]);
-                break;
+                ])
+                
             case .video(let video):
+                pendingVideoProcessing += 1
                 self.videoEncodeMP4(videoURL: video.url) { (outputURL) in
-                    var resultSrc: String;
-                    if(asBase64) {
-                        resultSrc = self.encodeVideo(url: outputURL);
-                        if(resultSrc == "") {
+                    var resultSrc: String
+                    if asBase64 {
+                        resultSrc = self.encodeVideo(url: outputURL)
+                        if resultSrc == "" {
                             self.returnError(error: ErrorCodes.UnknownError, message: "Failed to encode Video")
-                            return;
+                            return
                         }
                     } else {
-                        resultSrc = outputURL.absoluteString;
+                        resultSrc = outputURL.absoluteString
                     }
                     array.append([
                         "type": "video",
                         "isBase64": asBase64,
                         "src": resultSrc
-                    ]);
-
-                    let result:CDVPluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: array);
-                    self.commandDelegate.send(result, callbackId: self._callbackId)
+                    ])
+                    
+                    pendingVideoProcessing -= 1
+                    // Send the result when all videos are processed
+                    if pendingVideoProcessing == 0 {
+                        let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: array)
+                        self.commandDelegate.send(result, callbackId: self._callbackId)
+                    }
                 }
-                break;
             }
         }
+        
+        // Send the result if no videos are pending processing
+        if pendingVideoProcessing == 0 {
+            let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: array)
+            self.commandDelegate.send(result, callbackId: self._callbackId)
+        }
     }
+
 
     func videoEncodeMP4(videoURL: URL, completion: @escaping (_ outputURL: URL) -> Void) {
         let tempDirectory: URL
