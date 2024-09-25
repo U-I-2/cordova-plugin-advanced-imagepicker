@@ -1,4 +1,5 @@
 import BeehomeYPImagePicker
+import AVFoundation
 
 @objc(AdvancedImagePicker) class AdvancedImagePicker : CDVPlugin  {
 
@@ -113,7 +114,7 @@ import BeehomeYPImagePicker
         self.viewController.present(picker, animated: true, completion: nil);
     }
 
-    func handleResult(items: [YPMediaItem], asBase64: Bool, asJpeg: Bool) {
+      func handleResult(items: [YPMediaItem], asBase64: Bool, asJpeg: Bool) {
         var array = [] as Array;
         for item in items {
             switch item {
@@ -126,27 +127,76 @@ import BeehomeYPImagePicker
                 ]);
                 break;
             case .video(let video):
-                var resultSrc:String;
-                if(asBase64) {
-                    resultSrc = self.encodeVideo(url: video.url);
-                    if(resultSrc == "") {
-                        self.returnError(error: ErrorCodes.UnknownError, message: "Failed to encode Video")
-                        return;
+                self.videoEncodeMP4(videoURL: video.url) { (outputURL) in
+                    var resultSrc: String;
+                    if(asBase64) {
+                        resultSrc = self.encodeVideo(url: outputURL);
+                        if(resultSrc == "") {
+                            self.returnError(error: ErrorCodes.UnknownError, message: "Failed to encode Video")
+                            return;
+                        }
+                    } else {
+                        resultSrc = outputURL.absoluteString;
                     }
-                } else {
-                    resultSrc = video.url.absoluteString;
+                    array.append([
+                        "type": "video",
+                        "isBase64": asBase64,
+                        "src": resultSrc
+                    ]);
+
+                    let result:CDVPluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: array);
+                    self.commandDelegate.send(result, callbackId: self._callbackId)
                 }
-                array.append([
-                    "type": "video",
-                    "isBase64": asBase64,
-                    "src": resultSrc
-                ]);
                 break;
             }
         }
-        let result:CDVPluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: array);
-        self.commandDelegate.send(result, callbackId: _callbackId)
     }
+
+    func videoEncodeMP4(videoURL: URL, completion: @escaping (_ outputURL: URL) -> Void) {
+        let tempDirectory: URL
+        do {
+            tempDirectory = try FileManager.default.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: videoURL, create: true)
+        } catch {
+            print("Could not create temporary directory: \(error.localizedDescription)")
+            return
+        }
+        
+        let tempFileName = UUID().uuidString + ".mp4"
+        let tempFileURL = tempDirectory.appendingPathComponent(tempFileName)
+        
+        let startDate = Date()
+        let asset = AVURLAsset(url: videoURL)
+        
+        guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
+            print("Failed to create export session.")
+            return
+        }
+        
+        exportSession.outputURL = tempFileURL
+        exportSession.outputFileType = AVFileType.mp4
+        exportSession.shouldOptimizeForNetworkUse = true
+        
+        let start = CMTimeMakeWithSeconds(0.0, preferredTimescale: 0)
+        let range = CMTimeRange(start: start, duration: asset.duration)
+        exportSession.timeRange = range
+        
+        exportSession.exportAsynchronously {
+            switch exportSession.status {
+            case .failed:
+                print("MP4 export failed: \(exportSession.error?.localizedDescription ?? "-")")
+            case .cancelled:
+                print("MP4 export cancelled")
+            case .completed:
+                let endDate = Date()
+                let time = endDate.timeIntervalSince(startDate)
+                print("MP4 output completed in \(time)s")
+                completion(exportSession.outputURL ?? tempFileURL)
+            default:
+                break
+            }
+        }
+    }
+
 
     func encodeImage(image: UIImage, asBase64: Bool, asJpeg: Bool) -> String {
         let imageData: NSData;
