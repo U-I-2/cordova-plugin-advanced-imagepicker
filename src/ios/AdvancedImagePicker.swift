@@ -1,4 +1,5 @@
 import YPImagePicker
+import AVFoundation
 
 @objc(AdvancedImagePicker) class AdvancedImagePicker : CDVPlugin {
 
@@ -15,17 +16,17 @@ import YPImagePicker
     func present(command: CDVInvokedUrlCommand) {
         _callbackId = command.callbackId
         guard let options = command.argument(at: 0) as? NSDictionary else {
-            self.returnError(error: ErrorCodes.WrongJsonObject, message: "The first Argument must be the Configuration")
+            self.returnError(error: ErrorCodes.WrongJsonObject, message: "The first argument must be the configuration")
             return
         }
 
-        // Extract existing options.
+        // Extract options
         let mediaType = options.value(forKey: "mediaType") as? String ?? "IMAGE"
         let startOnScreen = options.value(forKey: "startOnScreen") as? String ?? "LIBRARY"
         let showCameraTile = options.value(forKey: "showCameraTile") as? Bool ?? true
         let min = options.value(forKey: "min") as? NSInteger ?? 1
         let max = options.value(forKey: "max") as? NSInteger ?? 1
-        let defaultMaxCountMessage = "You can select a maximum of " + String(max) + " files"
+        let defaultMaxCountMessage = "You can select a maximum of \(String(max)) files"
         let maxCountMessage = options.value(forKey: "maxCountMessage") as? String ?? defaultMaxCountMessage
         let buttonText = options.value(forKey: "buttonText") as? String ?? ""
         let asBase64 = options.value(forKey: "asBase64") as? Bool ?? false
@@ -35,13 +36,13 @@ import YPImagePicker
         let libraryTimeLimit = options.value(forKey: "libraryTimeLimit") as? Double ?? 60.0
         let minimumTimeLimit = options.value(forKey: "minimumTimeLimit") as? Double ?? 3.0
 
-        // Extract custom wording overrides.
+        // Extract custom wordings
         let libraryTitle = options.value(forKey: "libraryTitle") as? String
         let cameraTitle = options.value(forKey: "cameraTitle") as? String
         let cancelTitle = options.value(forKey: "cancelTitle") as? String
         let doneTitle = options.value(forKey: "doneTitle") as? String
 
-        // Validate min and max.
+        // Validate min/max
         if max < 0 || min < 0 {
             self.returnError(error: ErrorCodes.WrongJsonObject, message: "Min and Max cannot be less than zero.")
             return
@@ -51,13 +52,13 @@ import YPImagePicker
             return
         }
 
-        // Create the picker configuration.
+        // Create YPImagePicker configuration
         var config = YPImagePickerConfiguration()
         config.onlySquareImagesFromCamera = false
         config.showsPhotoFilters = false
         config.showsVideoTrimmer = false
         config.shouldSaveNewPicturesToAlbum = false
-        config.albumName = Bundle.main.infoDictionary![kCFBundleNameKey as String] as! String
+        config.albumName = Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String ?? "MyApp"
         config.library.isSquareByDefault = false
         config.library.itemOverlayType = .none
         config.library.skipSelectionsGallery = true
@@ -67,16 +68,17 @@ import YPImagePicker
         config.video.libraryTimeLimit = libraryTimeLimit
         config.video.minimumTimeLimit = minimumTimeLimit
 
-        // Set the starting screen.
-        if startOnScreen == "IMAGE" {
+        // Set starting screen
+        switch startOnScreen {
+        case "IMAGE":
             config.startOnScreen = .photo
-        } else if startOnScreen == "VIDEO" {
+        case "VIDEO":
             config.startOnScreen = .video
-        } else {
+        default:
             config.startOnScreen = .library
         }
 
-        // Set available screens.
+        // Configure screens
         var screens: [YPPickerScreen] = [.library]
         if showCameraTile {
             if mediaType != "VIDEO" {
@@ -90,22 +92,22 @@ import YPImagePicker
 
         config.library.defaultMultipleSelection = (max > 1)
         if mediaType == "IMAGE" {
-            config.library.mediaType = YPlibraryMediaType.photo
+            config.library.mediaType = .photo
         } else if mediaType == "VIDEO" {
-            config.library.mediaType = YPlibraryMediaType.video
+            config.library.mediaType = .video
         } else {
-            config.library.mediaType = YPlibraryMediaType.photoAndVideo
+            config.library.mediaType = .photoAndVideo
         }
         config.library.minNumberOfItems = min
         config.library.maxNumberOfItems = max
 
-        // Set wording for warning and next button.
+        // Overwrite warning & next button if needed
         config.wordings.warningMaxItemsLimit = maxCountMessage
-        if buttonText != "" {
+        if !buttonText.isEmpty {
             config.wordings.next = buttonText
         }
 
-        // Apply custom wording overrides if provided.
+        // Apply custom wording if provided
         if let libraryTitle = libraryTitle, !libraryTitle.isEmpty {
             config.wordings.libraryTitle = libraryTitle
         }
@@ -119,7 +121,7 @@ import YPImagePicker
             config.wordings.done = doneTitle
         }
 
-        // Create and configure the picker.
+        // Create and show the picker
         let picker = YPImagePicker(configuration: config)
 
         if #available(iOS 15.0, *) {
@@ -131,7 +133,7 @@ import YPImagePicker
         picker.didFinishPicking { items, cancelled in
             if cancelled {
                 self.returnError(error: ErrorCodes.PickerCanceled)
-            } else if items.count > 0 {
+            } else if !items.isEmpty {
                 self.handleResult(items: items, asBase64: asBase64, asJpeg: asJpeg)
             }
             picker.dismiss(animated: true, completion: nil)
@@ -139,6 +141,8 @@ import YPImagePicker
 
         self.viewController.present(picker, animated: true, completion: nil)
     }
+
+    // MARK: - Processing Results
 
     func handleResult(items: [YPMediaItem], asBase64: Bool, asJpeg: Bool) {
         var array = [Any]()
@@ -155,7 +159,7 @@ import YPImagePicker
                 var resultSrc: String
                 if asBase64 {
                     resultSrc = self.encodeVideo(url: video.url)
-                    if resultSrc == "" {
+                    if resultSrc.isEmpty {
                         self.returnError(error: ErrorCodes.UnknownError, message: "Failed to encode Video")
                         return
                     }
@@ -172,6 +176,8 @@ import YPImagePicker
         let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: array)
         self.commandDelegate.send(result, callbackId: _callbackId)
     }
+
+    // MARK: - Encoding Helpers
 
     func encodeImage(image: UIImage, asBase64: Bool, asJpeg: Bool) -> String {
         let imageData: NSData
@@ -193,14 +199,6 @@ import YPImagePicker
         }
     }
 
-    func tempFilePath(ext: String = "png") -> URL {
-        let filename: String = self.OWN_PREFIX! + UUID().uuidString
-        var contentUrl = URL(fileURLWithPath: NSTemporaryDirectory())
-        contentUrl.appendPathComponent(filename)
-        contentUrl.appendPathExtension(ext)
-        return contentUrl
-    }
-
     func encodeVideo(url: URL) -> String {
         do {
             let fileData = try Data(contentsOf: url)
@@ -210,12 +208,25 @@ import YPImagePicker
         }
     }
 
+    func tempFilePath(ext: String = "png") -> URL {
+        let filename: String = self.OWN_PREFIX! + UUID().uuidString
+        var contentUrl = URL(fileURLWithPath: NSTemporaryDirectory())
+        contentUrl.appendPathComponent(filename)
+        contentUrl.appendPathExtension(ext)
+        return contentUrl
+    }
+
+    // MARK: - Error Handling
+
     func returnError(callbackId: String?, error: ErrorCodes, message: String = "") {
         if let callbackId = callbackId {
-            let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: [
-                "code": error.rawValue,
-                "message": message
-            ])
+            let result = CDVPluginResult(
+                status: CDVCommandStatus_ERROR,
+                messageAs: [
+                    "code": error.rawValue,
+                    "message": message
+                ]
+            )
             self.commandDelegate.send(result, callbackId: callbackId)
         }
     }
@@ -241,6 +252,8 @@ import YPImagePicker
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         self.commandDelegate.send(result, callbackId: command.callbackId)
     }
+
+    // MARK: - Error Codes
 
     enum ErrorCodes: NSNumber {
         case UnsupportedAction = 1
