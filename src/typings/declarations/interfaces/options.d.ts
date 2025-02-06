@@ -81,6 +81,26 @@ declare module 'cordova-plugin-advanced-imagepicker' {
      * default: AVAssetExportPresetHighestQuality
      */
     videoCompression?: string;
+    /**
+     * Customize the Library Title
+     * default: undefined (will use default picker wording)
+     */
+    libraryTitle?: string;
+    /**
+     * Customize the Camera Title
+     * default: undefined (will use default picker wording)
+     */
+    cameraTitle?: string;
+    /**
+     * Customize the Cancel Button Title
+     * default: undefined (will use default picker wording)
+     */
+    cancelTitle?: string;
+    /**
+     * Customize the Done Button Title
+     * default: undefined (will use default picker wording)
+     */
+    doneTitle?: string;
   }
 
 }
